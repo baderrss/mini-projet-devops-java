@@ -63,8 +63,11 @@ pipeline {
                         mvn clean verify sonar:sonar \
                             -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
                             -Dsonar.projectName='${SONAR_PROJECT_NAME}' \
-                            -Dsonar.host.url=http://192.168.190.130:9000 \
-                            -Dsonar.login=your-sonar-token
+                            -Dsonar.java.binaries=target/classes \
+                            -Dsonar.sources=src/main/java \
+                            -Dsonar.tests=src/test/java \
+                            -Dsonar.sourceEncoding=UTF-8 \
+                            -Dsonar.host.url=http://192.168.190.130:9000
                     """
                 }
             }
@@ -74,13 +77,10 @@ pipeline {
             steps {
                 script {
                     echo '📊 Étape 5/6 - Vérification Quality Gate...'
-                    timeout(time: 2, unit: 'MINUTES') {
-                        def qualityGate = waitForQualityGate()
-                        if (qualityGate.status != 'OK') {
-                            error "❌ Quality Gate ÉCHOUÉ: ${qualityGate.status}"
-                        }
-                        echo "✅ Quality Gate: ${qualityGate.status}"
+                    timeout(time: 5, unit: 'MINUTES') {
+                        waitForQualityGate abortPipeline: true
                     }
+                    echo "✅ Quality Gate passé avec succès"
                 }
             }
         }
@@ -89,21 +89,42 @@ pipeline {
             steps {
                 sh """
                     echo "🚀 Étape 6/6 - Déploiement sur Apache Tomcat"
+
                     echo "📦 Création du package WAR..."
                     mvn clean package -DskipTests
 
-                    WAR_FILE="target/${PROJECT_NAME}.war"
+                    WAR_FILE="target/${PROJECT_NAME}-1.0-SNAPSHOT.war"
 
-                    echo "🌐 Déploiement sur Tomcat..."
+                    echo "📁 Vérification du fichier WAR:"
+                    ls -la target/*.war
+
+                    echo "🌐 Arrêt de l'application existante..."
+                    curl -s -u ${TOMCAT_USER}:${TOMCAT_PASS} \
+                         "${TOMCAT_URL_BASE}/undeploy?path=/${PROJECT_NAME}" || echo "ℹ️ Aucune application à désinstaller"
+
+                    sleep 5
+
+                    echo "🔄 Déploiement de la nouvelle version..."
                     curl -v -u ${TOMCAT_USER}:${TOMCAT_PASS} \
-                         -T ${WAR_FILE} \
+                         -T "\${WAR_FILE}" \
                          "${TOMCAT_URL_BASE}/deploy?path=/${PROJECT_NAME}&update=true"
 
-                    echo "✅ Application déployée avec succès"
+                    if [ \$? -eq 0 ]; then
+                        echo "✅ Application déployée avec succès"
 
-                    echo "🔍 Vérification du déploiement..."
-                    curl -s -u ${TOMCAT_USER}:${TOMCAT_PASS} \
-                         "${TOMCAT_URL_BASE}/list" | grep ${PROJECT_NAME} || echo "⚠️ Application non trouvée dans la liste"
+                        echo "⏳ Attente du démarrage..."
+                        sleep 15
+
+                        echo "🔍 Vérification du déploiement:"
+                        curl -s -u ${TOMCAT_USER}:${TOMCAT_PASS} \
+                             "${TOMCAT_URL_BASE}/list" | grep "${PROJECT_NAME}" && echo "✅ Application trouvée"
+
+                        echo "🌐 Test d'accès à l'application:"
+                        curl -f "http://localhost:8081/${PROJECT_NAME}/" && echo "✅ Application accessible" || echo "⚠️ Application non accessible"
+                    else
+                        echo "❌ Échec du déploiement"
+                        exit 1
+                    fi
                 """
             }
         }
