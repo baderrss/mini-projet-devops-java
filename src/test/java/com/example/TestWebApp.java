@@ -1,19 +1,20 @@
 package com.example;
 
+import com.example.miniprojetdevopsjava.HelloServlet;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class TestWebApp {
+class TestWebApp {
 
     @Test
-    public void testSimpleAddition() {
+    void testSimpleAddition() {
         System.out.println("✅ Test d'addition simple exécuté");
         int result = 2 + 2;
-        assertTrue(result == 4, "2 + 2 doit être égal à 4");
+        assertEquals(4, result, "2 + 2 doit être égal à 4");
     }
 
     @Test
-    public void testStringComparison() {
+    void testStringComparison() {
         System.out.println("✅ Test de comparaison de chaînes exécuté");
         String expected = "Hello";
         String actual = "Hello";
@@ -21,10 +22,17 @@ public class TestWebApp {
     }
 
     @Test
-    public void testWebAppLogic() {
+    void testWebAppLogic() {
         System.out.println("✅ Test de logique métier exécuté");
         // Simulation d'une logique métier simple
         boolean isActive = true;
         assertTrue(isActive, "L'application doit être active");
+    }
+
+    @Test
+    void testServletInitialization() {
+        System.out.println("✅ Test d'initialisation Servlet exécuté");
+        HelloServlet servlet = new HelloServlet();
+        assertNotNull(servlet, "La servlet doit être instanciée");
     }
 }
