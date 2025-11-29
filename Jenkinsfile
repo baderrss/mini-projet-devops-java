@@ -22,7 +22,9 @@ pipeline {
                     url: 'https://github.com/baderrss/mini-projet-devops-java.git',
                     credentialsId: 'github-credentials'
                 sh '''
-                    echo "✅ Étape 1/6 - Code récupéré depuis GitHub"
+                    echo " Étape 1/6 - Code récupéré depuis GitHub"
+                    echo " Contenu du repository:"
+                    ls -la
                 '''
             }
         }
@@ -30,9 +32,9 @@ pipeline {
         stage('Build Maven') {
             steps {
                 sh '''
-                    echo "🔨 Étape 2/6 - Installation des dépendances et compilation"
+                    echo " Étape 2/6 - Installation des dépendances et compilation"
                     mvn clean compile -U
-                    echo "✅ Application compilée avec succès"
+                    echo " Application compilée avec succès"
                 '''
             }
         }
@@ -40,14 +42,15 @@ pipeline {
         stage('Tests Unitaires') {
             steps {
                 sh '''
-                    echo "🧪 Étape 3/6 - Exécution des tests unitaires JUnit"
+                    echo " Étape 3/6 - Exécution des tests unitaires JUnit"
                     mvn clean test
-                    echo "✅ Tests exécutés avec succès"
+                    echo " Tests exécutés avec succès"
                 '''
             }
             post {
                 always {
                     junit 'target/surefire-reports/*.xml'
+                    sh 'echo " Rapports de tests générés"'
                 }
             }
         }
@@ -56,14 +59,15 @@ pipeline {
             steps {
                 withSonarQubeEnv('sonarqube') {
                     sh """
-                        echo "🔍 Étape 4/6 - Analyse SonarQube en cours..."
+                        echo " Étape 4/6 - Analyse SonarQube en cours..."
                         mvn clean verify sonar:sonar \
                             -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
                             -Dsonar.projectName='${SONAR_PROJECT_NAME}' \
                             -Dsonar.java.binaries=target/classes \
                             -Dsonar.sources=src/main/java \
                             -Dsonar.tests=src/test/java \
-                            -Dsonar.sourceEncoding=UTF-8
+                            -Dsonar.sourceEncoding=UTF-8 \
+                            -Dsonar.host.url=http://192.168.190.130:9000
                     """
                 }
             }
@@ -72,20 +76,11 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 script {
-                    echo '📊 Étape 5/6 - Vérification Quality Gate (Non-bloquant)...'
-
-                    // Solution simple: Attendre un peu puis continuer
-                    sleep 60
-                    echo "✅ Quality Gate - Analyse SonarQube lancée, poursuite du déploiement"
-
-                    // Alternative: Vérification non-bloquante
-                    // try {
-                    //     timeout(time: 2, unit: 'MINUTES') {
-                    //         waitForQualityGate abortPipeline: false
-                    //     }
-                    // } catch (Exception e) {
-                    //     echo "⚠️ Quality Gate timeout - Continuation du pipeline"
-                    // }
+                    echo ' Étape 5/6 - Vérification Quality Gate...'
+                    timeout(time: 5, unit: 'MINUTES') {
+                        waitForQualityGate abortPipeline: true
+                    }
+                    echo " Quality Gate passé avec succès"
                 }
             }
         }
@@ -93,51 +88,41 @@ pipeline {
         stage('Deploy Tomcat') {
             steps {
                 sh """
-                    echo "🚀 Étape 6/6 - Déploiement sur Tomcat 10"
+                    echo " Étape 6/6 - Déploiement sur Apache Tomcat"
 
-                    echo "📦 Création du package WAR..."
+                    echo " Création du package WAR..."
                     mvn clean package -DskipTests
 
-                    WAR_FILE="target/${PROJECT_NAME}.war"
+                    WAR_FILE="target/${PROJECT_NAME}-1.0-SNAPSHOT.war"
 
-                    echo "📁 Vérification du fichier WAR:"
+                    echo " Vérification du fichier WAR:"
                     ls -la target/*.war
 
-                    if [ ! -f "\$WAR_FILE" ]; then
-                        echo "❌ Fichier WAR non trouvé"
-                        exit 1
-                    fi
-
-                    echo "🔄 Déploiement via Manager API..."
-
-                    # Nettoyage ancienne version
+                    echo " Arrêt de l'application existante..."
                     curl -s -u ${TOMCAT_USER}:${TOMCAT_PASS} \
-                         "${TOMCAT_URL_BASE}/undeploy?path=/${PROJECT_NAME}" || echo "ℹ️ Aucune version précédente"
+                         "${TOMCAT_URL_BASE}/undeploy?path=/${PROJECT_NAME}" || echo "ℹ Aucune application à désinstaller"
 
-                    sleep 3
+                    sleep 5
 
-                    # Déploiement nouvelle version
-                    HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" -u ${TOMCAT_USER}:${TOMCAT_PASS} \
-                         -T "\$WAR_FILE" \
-                         "${TOMCAT_URL_BASE}/deploy?path=/${PROJECT_NAME}&update=true")
+                    echo " Déploiement de la nouvelle version..."
+                    curl -v -u ${TOMCAT_USER}:${TOMCAT_PASS} \
+                         -T "\${WAR_FILE}" \
+                         "${TOMCAT_URL_BASE}/deploy?path=/${PROJECT_NAME}&update=true"
 
-                    if [ "\$HTTP_STATUS" = "200" ]; then
-                        echo "✅ Application déployée avec succès"
+                    if [ \$? -eq 0 ]; then
+                        echo " Application déployée avec succès"
 
-                        echo "⏳ Attente du démarrage..."
-                        sleep 10
+                        echo " Attente du démarrage..."
+                        sleep 15
 
-                        # Test d'accès
-                        echo "🌐 Test d'accès à l'application..."
-                        if curl -f -s "http://localhost:8081/${PROJECT_NAME}/hello" > /dev/null; then
-                            echo "🎉 SUCCÈS - Application déployée et accessible !"
-                            echo "🔗 URL: http://localhost:8081/${PROJECT_NAME}/hello"
-                        else
-                            echo "⚠️ Application déployée mais non accessible"
-                        fi
+                        echo " Vérification du déploiement:"
+                        curl -s -u ${TOMCAT_USER}:${TOMCAT_PASS} \
+                             "${TOMCAT_URL_BASE}/list" | grep "${PROJECT_NAME}" && echo "Application trouvée"
 
+                        echo " Test d'accès à l'application:"
+                        curl -f "http://localhost:8081/${PROJECT_NAME}/" && echo " Application accessible" || echo " Application non accessible"
                     else
-                        echo "❌ Échec du déploiement (HTTP \$HTTP_STATUS)"
+                        echo " Échec du déploiement"
                         exit 1
                     fi
                 """
@@ -147,17 +132,19 @@ pipeline {
 
     post {
         always {
-            echo "📊 === RAPPORT FINAL ==="
+            echo "📊 === RAPPORT FINAL DU PIPELINE ==="
             echo "🕒 Date: \$(date)"
-            echo "🌐 SonarQube: http://192.168.190.130:9000/dashboard?id=${SONAR_PROJECT_KEY}"
-            echo "🚀 Application: http://192.168.190.130:8081/${PROJECT_NAME}/hello"
+            echo "🔧 Outils utilisés: JDK21, Maven, SonarQube, Tomcat10"
+            echo "🌐 SonarQube Dashboard: http://192.168.190.130:9000/dashboard?id=${SONAR_PROJECT_KEY}"
+            echo "🚀 Application déployée: http://192.168.190.130:8081/${PROJECT_NAME}/"
         }
         success {
-            echo "🎉 PIPELINE RÉUSSI !"
-            echo "✅ Toutes les étapes terminées avec succès"
+            echo "🎉 === PIPELINE RÉUSSI ==="
+            echo "✅ Toutes les étapes terminées avec succès!"
         }
         failure {
-            echo "❌ PIPELINE EN ÉCHEC"
+            echo "❌ === PIPELINE EN ÉCHEC ==="
+            echo "🔍 Consultez les logs pour diagnostiquer le problème"
         }
     }
 }
