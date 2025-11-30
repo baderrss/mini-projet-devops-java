@@ -132,19 +132,19 @@ pipeline {
 
     post {
         always {
-            echo "📊 === RAPPORT FINAL DU PIPELINE ==="
-            echo "🕒 Date: \$(date)"
-            echo "🔧 Outils utilisés: JDK21, Maven, SonarQube, Tomcat10"
-            echo "🌐 SonarQube Dashboard: http://192.168.190.130:9000/dashboard?id=${SONAR_PROJECT_KEY}"
-            echo "🚀 Application déployée: http://192.168.190.130:8081/${PROJECT_NAME}/"
+            echo " === RAPPORT FINAL DU PIPELINE ==="
+            echo " Date: \$(date)"
+            echo " Outils utilisés: JDK21, Maven, SonarQube, Tomcat10"
+            echo " SonarQube Dashboard: http://192.168.190.130:9000/dashboard?id=${SONAR_PROJECT_KEY}"
+            echo " Application déployée: http://192.168.190.130:8081/${PROJECT_NAME}/"
         }
         success {
-            echo "🎉 === PIPELINE RÉUSSI ==="
-            echo "✅ Toutes les étapes terminées avec succès!"
+            echo " === PIPELINE RÉUSSI ==="
+            echo " Toutes les étapes terminées avec succès!"
         }
         failure {
-            echo "❌ === PIPELINE EN ÉCHEC ==="
-            echo "🔍 Consultez les logs pour diagnostiquer le problème"
+            echo " === PIPELINE EN ÉCHEC ==="
+            echo " Consultez les logs pour diagnostiquer le problème"
         }
     }
 }
